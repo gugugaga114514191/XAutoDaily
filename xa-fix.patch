@@ -11,22 +11,20 @@ index ff02483..2d90f7f 100644
                  ServletPool.injectServlet()
              }.onFailure { LogUtil.e(it) }
 diff --git a/app/src/main/java/me/teble/xposed/autodaily/hook/base/ProcUtil.kt b/app/src/main/java/me/teble/xposed/autodaily/hook/base/ProcUtil.kt
-index 27a7a78..a597d85 100644
+index 27a7a78..10978d3 100644
 --- a/app/src/main/java/me/teble/xposed/autodaily/hook/base/ProcUtil.kt
 +++ b/app/src/main/java/me/teble/xposed/autodaily/hook/base/ProcUtil.kt
-@@ -61,7 +61,14 @@ object ProcUtil {
+@@ -61,7 +61,12 @@ object ProcUtil {
  
      fun inProcess(flag: Int): Boolean = (procType and flag) != 0
  
 -    val isMain: Boolean = inProcess(MAIN)
 +    // ActivityManager.getRunningAppProcesses() 在 Android 12+ 对子进程并不可靠，
 +    // 一律以 LSPosed 传入的 processName 为准（hostProcessName）。
++    // 注意：hostProcessName/hostPackageName 是 lateinit 顶层变量，未初始化时访问会抛
++    // UninitializedPropertyAccessException，这里兜底回退到原来的判断。
 +    val isMain: Boolean
-+        get() = if (::hostProcessName.isInitialized && ::hostPackageName.isInitialized) {
-+            hostProcessName == hostPackageName
-+        } else {
-+            inProcess(MAIN)
-+        }
++        get() = runCatching { hostProcessName == hostPackageName }.getOrDefault(inProcess(MAIN))
      val isMsf: Boolean = inProcess(MSF)
      val isPeak: Boolean = inProcess(PEAK)
      val isTool: Boolean = inProcess(TOOL)
