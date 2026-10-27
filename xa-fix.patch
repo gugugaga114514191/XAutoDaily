@@ -1,0 +1,78 @@
+diff --git a/app/src/main/java/me/teble/xposed/autodaily/hook/MainHook.kt b/app/src/main/java/me/teble/xposed/autodaily/hook/MainHook.kt
+index ff02483..2d90f7f 100644
+--- a/app/src/main/java/me/teble/xposed/autodaily/hook/MainHook.kt
++++ b/app/src/main/java/me/teble/xposed/autodaily/hook/MainHook.kt
+@@ -263,6 +263,7 @@ class MainHook : IXposedHookLoadPackage, IXposedHookZygoteInit {
+             }
+         }
+         startupStep.hookBefore {
++            if (!ProcUtil.isMain) return@hookBefore
+             runCatching {
+                 ServletPool.injectServlet()
+             }.onFailure { LogUtil.e(it) }
+diff --git a/app/src/main/java/me/teble/xposed/autodaily/hook/base/ProcUtil.kt b/app/src/main/java/me/teble/xposed/autodaily/hook/base/ProcUtil.kt
+index 27a7a78..a597d85 100644
+--- a/app/src/main/java/me/teble/xposed/autodaily/hook/base/ProcUtil.kt
++++ b/app/src/main/java/me/teble/xposed/autodaily/hook/base/ProcUtil.kt
+@@ -61,7 +61,14 @@ object ProcUtil {
+ 
+     fun inProcess(flag: Int): Boolean = (procType and flag) != 0
+ 
+-    val isMain: Boolean = inProcess(MAIN)
++    // ActivityManager.getRunningAppProcesses() 在 Android 12+ 对子进程并不可靠，
++    // 一律以 LSPosed 传入的 processName 为准（hostProcessName）。
++    val isMain: Boolean
++        get() = if (::hostProcessName.isInitialized && ::hostPackageName.isInitialized) {
++            hostProcessName == hostPackageName
++        } else {
++            inProcess(MAIN)
++        }
+     val isMsf: Boolean = inProcess(MSF)
+     val isPeak: Boolean = inProcess(PEAK)
+     val isTool: Boolean = inProcess(TOOL)
+diff --git a/app/src/main/java/me/teble/xposed/autodaily/hook/utils/QApplicationUtil.kt b/app/src/main/java/me/teble/xposed/autodaily/hook/utils/QApplicationUtil.kt
+index ea3b143..c2a16f5 100644
+--- a/app/src/main/java/me/teble/xposed/autodaily/hook/utils/QApplicationUtil.kt
++++ b/app/src/main/java/me/teble/xposed/autodaily/hook/utils/QApplicationUtil.kt
+@@ -19,11 +19,10 @@ object QApplicationUtil {
+     private val fAppRuntime: Field by lazy { application.field(AppRuntime::class.java)!! }
+     val appRuntime: AppRuntime get() = application.waitAppRuntime(null)
+ 
+-    val appInterface: AppInterface = if (ProcUtil.isMain) {
++    val appInterface: AppInterface by lazy {
+         // only main process has QQAppInterface, other process is PluginRuntime or maybe something else
++        check(ProcUtil.isMain) { "appInterface is not available in ${ProcUtil.procName}" }
+         appRuntime as QQAppInterface
+-    } else {
+-        error("appInterface is not available in ${ProcUtil.procName}}")
+     }
+ 
+     val currentUin: Long inline get() = appRuntime.longAccountUin
+diff --git a/app/src/main/java/me/teble/xposed/autodaily/utils/TaskExecutor.kt b/app/src/main/java/me/teble/xposed/autodaily/utils/TaskExecutor.kt
+index ba86da8..60b671b 100644
+--- a/app/src/main/java/me/teble/xposed/autodaily/utils/TaskExecutor.kt
++++ b/app/src/main/java/me/teble/xposed/autodaily/utils/TaskExecutor.kt
+@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
+ import kotlinx.coroutines.delay
+ import kotlinx.coroutines.launch
+ import kotlinx.coroutines.withContext
++import me.teble.xposed.autodaily.hook.base.ProcUtil
+ import me.teble.xposed.autodaily.hook.base.moduleLoadInit
+ import me.teble.xposed.autodaily.hook.notification.XANotification
+ import me.teble.xposed.autodaily.hook.utils.ToastUtil
+@@ -56,6 +57,7 @@ object TaskExecutor {
+     }
+ 
+     fun runTasks(userExec: Boolean) {
++        if (!ProcUtil.isMain) return
+         scope.launch(Dispatchers.IO) {
+             while (!moduleLoadInit) {
+                 LogUtil.d("等待初始化完毕")
+@@ -153,6 +155,7 @@ object TaskExecutor {
+     }
+ 
+     fun startCorn() {
++        if (!ProcUtil.isMain) return
+         val scheduler = CronUtil.scheduler
+         if (scheduler.isStarted) {
+             return
