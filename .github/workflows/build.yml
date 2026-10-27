@@ -7,6 +7,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     steps:
       - name: Checkout (with submodules)
         uses: actions/checkout@v4
@@ -19,13 +22,15 @@ jobs:
           distribution: temurin
           java-version: '11'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install SDK packages
+      - name: Android SDK packages
         run: |
-          sdkmanager --install "platforms;android-33" "build-tools;33.0.1" "ndk;27.0.12077973" "cmake;3.22.1"
-          yes | sdkmanager --licenses > /dev/null || true
+          set -e
+          SDK="$ANDROID_HOME"
+          SDKM=$(ls -d "$SDK"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | sort -V | tail -1)
+          echo "sdkmanager: $SDKM"
+          yes | "$SDKM" --sdk_root="$SDK" --licenses > /dev/null 2>&1 || true
+          "$SDKM" --sdk_root="$SDK" "platforms;android-33" "build-tools;33.0.1" "ndk;27.0.12077973" "cmake;3.22.1"
+          echo "$(dirname "$SDKM")" >> "$GITHUB_PATH"
 
       - name: Apply fix patch
         run: |
